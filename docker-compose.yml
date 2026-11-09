@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  cybersec-slm:
+    build: .
+    container_name: cybersec-slm
+    ports:
+      - "7860:7860"
+    environment:
+      - PORT=7860
+      - HOST=0.0.0.0
+    restart: unless-stopped

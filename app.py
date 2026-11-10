@@ -1,19 +1,17 @@
 import os
-import time
 import torch
-from flask import Flask, render_template, request, jsonify
+import gradio as gr
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
-app = Flask(__name__)
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ADAPTER_PATH = os.path.join(BASE_DIR, "model", "cybersec-slm")
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 print("=" * 50)
-print(f"CyberSec-SLM starting on {device.upper()}...")
+print(f"CyberSec-SLM loading on {device.upper()}...")
 print("=" * 50)
 
 tokenizer = AutoTokenizer.from_pretrained(ADAPTER_PATH)
@@ -26,11 +24,19 @@ model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
 model.to(device)
 model.eval()
 
-print("Model ready!")
+print("CyberSec-SLM ready!")
 
-def generate_answer(question):
-    prompt = f"### Cybersecurity Question:\n{question.strip()}\n\n### Cybersecurity Answer:\n"
-    t0 = time.time()
+def answer_question(question, history):
+    if not question or not question.strip():
+        return "Please enter a cybersecurity question."
+
+    prompt = (
+        "### Cybersecurity Question:\n"
+        + question.strip()
+        + "\n\n"
+        "### Cybersecurity Answer:\n"
+    )
+
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
     with torch.no_grad():
@@ -43,7 +49,6 @@ def generate_answer(question):
             pad_token_id=tokenizer.pad_token_id
         )
 
-    duration = round(time.time() - t0, 2)
     generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
     answer = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
@@ -51,31 +56,22 @@ def generate_answer(question):
         if marker in answer:
             answer = answer.split(marker)[0].strip()
 
-    return answer or "I could not generate a clear answer. Please try again.", duration
+    return answer or "I could not generate a clear answer. Please try asking again."
 
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "healthy", "device": device})
-
-@app.route("/ask", methods=["POST"])
-def ask():
-    data = request.get_json() or {}
-    question = data.get("question", "").strip()
-    if not question:
-        return jsonify({"answer": "Please enter a cybersecurity question.", "time_taken": 0.0})
-
-    try:
-        answer, duration = generate_answer(question)
-        return jsonify({"answer": answer, "time_taken": duration, "device": device.upper()})
-    except Exception as error:
-        return jsonify({"answer": f"Error: {str(error)}", "time_taken": 0.0}), 500
+demo = gr.ChatInterface(
+    fn=answer_question,
+    title="🛡️ CyberSec-SLM",
+    description="Cybersecurity Small Language Model powered by fine-tuned Qwen 2.5 (0.5B) + LoRA (PEFT).",
+    examples=[
+        "What is phishing and what are common warning signs?",
+        "How can organizations prevent SQL Injection (SQLi)?",
+        "What is Cross-Site Scripting (XSS) and what are its main types?",
+        "What is Zero Trust Architecture and its core principles?",
+        "What is Ransomware and what are the best recovery defenses?",
+        "What is Multi-Factor Authentication (MFA) and why is SMS MFA discouraged?"
+    ],
+    theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate")
+)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    host = os.environ.get("HOST", "0.0.0.0")
-    print(f"\nServer running at: http://{host}:{port}\n")
-    app.run(host=host, port=port, debug=False)
+    demo.launch()

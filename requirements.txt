@@ -1,8 +1,8 @@
-torch>=2.0.0
+torch
 transformers>=4.40.0
 peft>=0.10.0
 accelerate>=0.28.0
-flask>=3.0.0
+gradio>=4.0.0
 packaging
 certifi
 safetensors
